@@ -2,12 +2,18 @@
 #include <M5Unified.h>
 
 #include "BeatClock.h"
+#include "M5BuzzerToneOutput.h"
 
 namespace {
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint16_t TEMPO_BPM = 120;
 constexpr uint8_t BEATS_PER_BAR = 4;
 constexpr uint32_t BEAT_INTERVAL_MS = 60000UL / TEMPO_BPM;
+constexpr float REGULAR_CLICK_FREQUENCY_HZ = 294.0f;
+constexpr float DOWNBEAT_CLICK_FREQUENCY_HZ = 1568.0f;
+constexpr uint32_t REGULAR_CLICK_DURATION_MS = 45;
+constexpr uint32_t DOWNBEAT_CLICK_DURATION_MS = 45;
+constexpr uint8_t CLICK_VOLUME = 96;
 constexpr int16_t BEAT_ROW_Y = 82;
 constexpr int16_t BEAT_FIRST_X = 57;
 constexpr int16_t BEAT_SPACING = 42;
@@ -16,7 +22,10 @@ constexpr int16_t STATUS_ROW_Y = 113;
 constexpr int16_t STATUS_ROW_HEIGHT = 18;
 
 BeatClock beatClock(BEAT_INTERVAL_MS);
+M5BuzzerToneOutput buzzerOutput;
 uint8_t currentBeat = 0;
+uint32_t clickStopAtMs = 0;
+bool clickActive = false;
 
 void drawBeat(uint8_t beat, bool active) {
   const int16_t x = BEAT_FIRST_X + beat * BEAT_SPACING;
@@ -56,7 +65,7 @@ void drawScreen() {
   for (uint8_t beat = 0; beat < BEATS_PER_BAR; beat++) {
     drawBeat(beat, beat == currentBeat);
   }
-  drawInputStatus("ready - silent clock");
+  drawInputStatus("ready - audible clock");
 }
 
 void reportButtons() {
@@ -78,12 +87,40 @@ void reportButtons() {
   }
 }
 
+void serviceClick(uint32_t nowMs) {
+  if (!clickActive) return;
+
+  if (static_cast<int32_t>(nowMs - clickStopAtMs) < 0) return;
+
+  buzzerOutput.stop();
+  clickActive = false;
+}
+
+void triggerCurrentClick(uint32_t nowMs) {
+  const bool downbeat = currentBeat == 0;
+  const float frequencyHz = downbeat ? DOWNBEAT_CLICK_FREQUENCY_HZ
+                                     : REGULAR_CLICK_FREQUENCY_HZ;
+  const uint32_t durationMs = downbeat ? DOWNBEAT_CLICK_DURATION_MS
+                                       : REGULAR_CLICK_DURATION_MS;
+
+  if (clickActive) buzzerOutput.stop();
+  clickActive = buzzerOutput.startTone(frequencyHz);
+  clickStopAtMs = nowMs + durationMs;
+  Serial.printf(
+      "click: beat=%u accent=%s frequency_hz=%.0f duration_ms=%lu "
+      "volume=%u ok=%s\n",
+      currentBeat + 1, downbeat ? "yes" : "no", frequencyHz,
+      static_cast<unsigned long>(durationMs), CLICK_VOLUME,
+      clickActive ? "yes" : "no");
+}
+
 void advanceVisibleBeat(uint32_t nowMs) {
   const uint32_t elapsed = beatClock.elapsedBeats(nowMs);
   if (elapsed == 0) return;
 
   const uint8_t previousBeat = currentBeat;
   currentBeat = (currentBeat + elapsed) % BEATS_PER_BAR;
+  triggerCurrentClick(nowMs);
   drawBeat(previousBeat, false);
   drawBeat(currentBeat, true);
 
@@ -105,14 +142,19 @@ void setup() {
 
   M5.Display.setRotation(1);
   drawScreen();
+  buzzerOutput.begin();
+  buzzerOutput.setVolume(CLICK_VOLUME);
   beatClock.begin(millis());
-  Serial.printf("metronome: silent_clock=ready bpm=%u beats_per_bar=%u\n",
+  triggerCurrentClick(millis());
+  Serial.printf("metronome: audible_clock=ready bpm=%u beats_per_bar=%u\n",
                 TEMPO_BPM, BEATS_PER_BAR);
 }
 
 void loop() {
   M5.update();
   reportButtons();
-  advanceVisibleBeat(millis());
+  const uint32_t nowMs = millis();
+  serviceClick(nowMs);
+  advanceVisibleBeat(nowMs);
   delay(1);
 }

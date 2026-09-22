@@ -13,9 +13,10 @@ before either design is promoted into shared code.
 ## Current experiment
 
 The hardware baseline proves the PlatformIO target, M5Unified initialization,
-landscape display, and Button A/B edges. The current slice adds a silent 120 BPM
-beat clock and projects its position onto four beat indicators. The buzzer,
-tempo controls, selectable meter, and transport behavior remain deferred.
+landscape display, and Button A/B edges. A silent-clock slice then added a 120
+BPM deadline clock and four visible beat indicators. The current slice adds
+short buzzer clicks with a distinct downbeat accent. Tempo controls, selectable
+meter, and transport behavior remain deferred.
 
 ```sh
 just build
@@ -76,8 +77,8 @@ have already passed.
 ## Planned slices
 
 1. Validate the display and both buttons on hardware. **Complete.**
-2. Add a drift-resistant silent beat clock and visible beat position. **Current.**
-3. Add regular and accented downbeat buzzer clicks.
+2. Add a drift-resistant silent beat clock and visible beat position. **Complete.**
+3. Add regular and accented downbeat buzzer clicks. **Current.**
 4. Add tempo controls and define mid-interval tempo-change behavior.
 5. Add selectable meter and click grouping.
 6. Add Start, Stop, and Continue interaction.
