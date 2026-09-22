@@ -10,11 +10,12 @@ transport package. Its timing implementation will be compared with the local
 [`calculator-face-input`](https://github.com/fczuardi/calculator-face-input)
 before either design is promoted into shared code.
 
-## Current baseline
+## Current experiment
 
-The first slice only proves the PlatformIO target, M5Unified initialization,
-landscape display, and Button A/B press and release events. It intentionally
-contains no clock, tempo state, click sound, meter, or transport behavior.
+The hardware baseline proves the PlatformIO target, M5Unified initialization,
+landscape display, and Button A/B edges. The current slice adds a silent 120 BPM
+beat clock and projects its position onto four beat indicators. The buzzer,
+tempo controls, selectable meter, and transport behavior remain deferred.
 
 ```sh
 just build
@@ -74,12 +75,11 @@ have already passed.
 
 ## Planned slices
 
-1. Validate the display and both buttons on hardware.
-2. Add a drift-resistant silent beat clock and visible beat position.
+1. Validate the display and both buttons on hardware. **Complete.**
+2. Add a drift-resistant silent beat clock and visible beat position. **Current.**
 3. Add regular and accented downbeat buzzer clicks.
 4. Add tempo controls and define mid-interval tempo-change behavior.
 5. Add selectable meter and click grouping.
 6. Add Start, Stop, and Continue interaction.
 7. Compare the result with the Calculator sequencer before extracting shared
    timing code.
-
