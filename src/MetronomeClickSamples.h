@@ -1,7 +1,20 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
 #include "PcmS8Sample.h"
 
+enum class ClickSoundId : uint8_t {
+  DryImpulse,
+  RimBlend,
+  DownSweep,
+  LowKnock,
+  Count,
+};
+
 void buildMetronomeClickSamples();
-const PcmS8Sample& regularBeatSample();
-const PcmS8Sample& downbeatSample();
+size_t clickSoundCount();
+const char* clickSoundName(ClickSoundId id);
+const char* clickSoundLogName(ClickSoundId id);
+const PcmS8Sample& clickSoundSample(ClickSoundId id);

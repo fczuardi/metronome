@@ -21,6 +21,21 @@ constexpr int16_t STATUS_ROW_HEIGHT = 18;
 BeatClock beatClock(BEAT_INTERVAL_MS);
 M5BuzzerToneOutput buzzerOutput;
 uint8_t currentBeat = 0;
+ClickSoundId accentClick = ClickSoundId::RimBlend;
+ClickSoundId regularClick = ClickSoundId::LowKnock;
+
+ClickSoundId nextClickSound(ClickSoundId current) {
+  const size_t nextIndex =
+      (static_cast<size_t>(current) + 1) % clickSoundCount();
+  return static_cast<ClickSoundId>(nextIndex);
+}
+
+void reportSoundSelection(const char* role, ClickSoundId sound) {
+  Serial.printf("%s_sound: selected=%s index=%u count=%u\n", role,
+                clickSoundLogName(sound),
+                static_cast<unsigned>(static_cast<size_t>(sound) + 1),
+                static_cast<unsigned>(clickSoundCount()));
+}
 
 void drawBeat(uint8_t beat, bool active) {
   const int16_t x = BEAT_FIRST_X + beat * BEAT_SPACING;
@@ -66,26 +81,28 @@ void drawScreen() {
 void reportButtons() {
   if (M5.BtnA.wasPressed()) {
     Serial.println("button: name=a action=pressed");
-    drawInputStatus("A pressed");
+    accentClick = nextClickSound(accentClick);
+    drawInputStatus(clickSoundName(accentClick));
+    reportSoundSelection("accent", accentClick);
   }
   if (M5.BtnA.wasReleased()) {
     Serial.println("button: name=a action=released");
-    drawInputStatus("A released");
   }
   if (M5.BtnB.wasPressed()) {
     Serial.println("button: name=b action=pressed");
-    drawInputStatus("B pressed");
+    regularClick = nextClickSound(regularClick);
+    drawInputStatus(clickSoundName(regularClick));
+    reportSoundSelection("regular", regularClick);
   }
   if (M5.BtnB.wasReleased()) {
     Serial.println("button: name=b action=released");
-    drawInputStatus("B released");
   }
 }
 
 void triggerCurrentClick(uint32_t nowMs) {
   const bool downbeat = currentBeat == 0;
-  const PcmS8Sample& sample =
-      downbeat ? downbeatSample() : regularBeatSample();
+  const ClickSoundId sound = downbeat ? accentClick : regularClick;
+  const PcmS8Sample& sample = clickSoundSample(sound);
   const bool started = buzzerOutput.playSample(sample);
   const uint32_t durationMs =
       sample.sampleCount * 1000UL / sample.sampleRateHz;
@@ -93,7 +110,7 @@ void triggerCurrentClick(uint32_t nowMs) {
       "click: beat=%u accent=%s sound=%s duration_ms=%lu sample_rate_hz=%lu "
       "samples=%u volume=%u ok=%s now_ms=%lu\n",
       currentBeat + 1, downbeat ? "yes" : "no",
-      downbeat ? "bright_clave" : "low_knock",
+      clickSoundLogName(sound),
       static_cast<unsigned long>(durationMs),
       static_cast<unsigned long>(sample.sampleRateHz),
       static_cast<unsigned>(sample.sampleCount), CLICK_VOLUME,
@@ -135,6 +152,8 @@ void setup() {
   triggerCurrentClick(millis());
   Serial.printf("metronome: audible_clock=ready bpm=%u beats_per_bar=%u\n",
                 TEMPO_BPM, BEATS_PER_BAR);
+  reportSoundSelection("accent", accentClick);
+  reportSoundSelection("regular", regularClick);
 }
 
 void loop() {

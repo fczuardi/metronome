@@ -15,8 +15,10 @@ before either design is promoted into shared code.
 The hardware baseline proves the PlatformIO target, M5Unified initialization,
 landscape display, and Button A/B edges. A silent-clock slice then added a 120
 BPM deadline clock and four visible beat indicators. The current slice adds
-short buzzer clicks with a distinct downbeat accent. Tempo controls, selectable
-meter, and transport behavior remain deferred.
+generated PCM clicks with a distinct downbeat accent. Button A cycles the
+accent sound and Button B cycles the regular sound through four hardware
+finalists. Tempo controls, selectable meter, and transport behavior remain
+deferred.
 
 ```sh
 just build
