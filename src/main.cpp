@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 
-#include "BeatClock.h"
+#include "DeadlineClock.h"
 #include "ControlSurface.h"
 #include "MetronomeAudio.h"
 #include "MetronomeClickSamples.h"
@@ -12,16 +12,30 @@ namespace {
 constexpr uint32_t SERIAL_BAUD = 115200;
 
 MetronomeState state;
-BeatClock beatClock(state.beatIntervalMs());
+DeadlineClock beatClock;
 ControlSurface controls;
 MetronomeAudio audio;
 MetronomeDisplay display;
 
-void adjustTempo(int8_t direction, uint32_t nowMs) {
+void adjustTempo(int8_t direction, uint64_t nowUs, uint32_t nowMs) {
   const uint16_t previousTempo = state.tempoBpm();
-  if (!state.adjustTempo(direction)) return;
+  if (!state.adjustTempo(direction)) {
+    Serial.printf(
+        "control: action=adjust mode=tempo direction=%s previous=%u "
+        "value=%u interval_ms=%lu phase=unchanged clamped=yes now_ms=%lu\n",
+        direction > 0 ? "up" : "down", previousTempo, state.tempoBpm(),
+        static_cast<unsigned long>(state.beatIntervalMs()),
+        static_cast<unsigned long>(nowMs));
+    return;
+  }
 
-  beatClock.setIntervalMs(nowMs, state.beatIntervalMs());
+  const bool rescheduled = beatClock.reschedule(
+      nowUs, state.beatIntervalMs() * 1000ULL,
+      IntervalChangePolicy::PreservePhase);
+  if (!rescheduled) {
+    Serial.println("clock: reschedule_failed");
+    return;
+  }
   display.drawControl(state);
   Serial.printf(
       "control: action=adjust mode=tempo direction=%s previous=%u value=%u "
@@ -52,7 +66,7 @@ void selectNextSound(bool accent) {
                 clickSoundLogName(selection));
 }
 
-void applyControl(ControlCommand command, uint32_t nowMs) {
+void applyControl(ControlCommand command, uint64_t nowUs, uint32_t nowMs) {
   if (command == ControlCommand::None) return;
 
   if (command == ControlCommand::NextMode) {
@@ -72,7 +86,7 @@ void applyControl(ControlCommand command, uint32_t nowMs) {
 
   switch (state.controlMode()) {
     case ControlMode::Tempo:
-      adjustTempo(direction, nowMs);
+      adjustTempo(direction, nowUs, nowMs);
       break;
     case ControlMode::Volume:
       adjustVolume(direction);
@@ -101,8 +115,8 @@ void triggerCurrentClick(uint32_t nowMs) {
       started ? "yes" : "no", static_cast<unsigned long>(nowMs));
 }
 
-void advanceVisibleBeat(uint32_t nowMs) {
-  const uint32_t elapsed = beatClock.elapsedBeats(nowMs);
+void advanceVisibleBeat(uint64_t nowUs, uint32_t nowMs) {
+  const uint32_t elapsed = beatClock.poll(nowUs).elapsed_events;
   if (elapsed == 0) return;
 
   const uint8_t previousBeat = state.currentBeat();
@@ -131,7 +145,11 @@ void setup() {
   buildMetronomeClickSamples();
   const bool keepAliveStarted = audio.begin(state.clickVolume());
   display.drawScreen(state);
-  beatClock.begin(millis());
+  const bool clockStarted = beatClock.begin(
+      static_cast<uint64_t>(micros()), state.beatIntervalMs() * 1000ULL);
+  if (!clockStarted) {
+    Serial.println("clock: begin_failed");
+  }
   triggerCurrentClick(millis());
   Serial.printf(
       "metronome: audible_clock=ready bpm=%u volume=%u beats_per_bar=%u "
@@ -145,8 +163,9 @@ void setup() {
 
 void loop() {
   M5.update();
+  const uint64_t nowUs = static_cast<uint64_t>(micros());
   const uint32_t nowMs = millis();
-  advanceVisibleBeat(nowMs);
-  applyControl(controls.poll(), nowMs);
+  advanceVisibleBeat(nowUs, nowMs);
+  applyControl(controls.poll(), nowUs, nowMs);
   delay(1);
 }
