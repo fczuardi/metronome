@@ -139,9 +139,7 @@ void setup() {
       state.tempoBpm(), state.clickVolume(), MetronomeState::BEATS_PER_BAR,
       state.controlModeName());
   Serial.printf(
-      "audio: action=keep_alive channel=%d samples=%u repeat=forever ok=%s\n",
-      MetronomeAudio::KEEP_ALIVE_CHANNEL,
-      static_cast<unsigned>(MetronomeAudio::KEEP_ALIVE_SAMPLE_COUNT),
+      "audio: idle_policy=keep_alive ok=%s\n",
       keepAliveStarted ? "yes" : "no");
 }
 
