@@ -15,11 +15,12 @@ before either design is promoted into shared code.
 The hardware baseline proves the PlatformIO target, M5Unified initialization,
 landscape display, and Button A/B edges. A silent-clock slice then added a 120
 BPM deadline clock and four visible beat indicators. The current slice adds
-generated rim-blend PCM clicks. The two-button control
+generated PCM clicks. The two-button control
 surface starts in Tempo mode: A increases and B decreases the BPM. Pressing
 A+B cycles to Volume mode, where the same buttons adjust output level; the next
-chord returns to Tempo. Selectable meter and transport behavior remain
-deferred.
+chord enters Sound mode, where A selects the accent and B selects regular
+clicks. The next chord returns to Tempo. Selectable meter and transport
+behavior remain deferred.
 
 ```sh
 just build

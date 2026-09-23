@@ -13,7 +13,6 @@ constexpr uint16_t MAX_TEMPO_BPM = 300;
 constexpr uint8_t BEATS_PER_BAR = 4;
 constexpr uint8_t INITIAL_CLICK_VOLUME = 128;
 constexpr uint8_t VOLUME_STEP = 8;
-constexpr size_t CLICK_SAMPLE_CAPACITY = 2560;
 constexpr size_t KEEP_ALIVE_SAMPLE_COUNT = 256;
 constexpr int KEEP_ALIVE_CHANNEL = 1;
 constexpr int16_t BEAT_ROW_Y = 82;
@@ -26,6 +25,7 @@ constexpr int16_t STATUS_ROW_HEIGHT = 18;
 enum class ControlMode : uint8_t {
   Tempo,
   Volume,
+  Sound,
 };
 
 uint32_t beatIntervalMs(uint16_t tempoBpm) {
@@ -34,16 +34,25 @@ uint32_t beatIntervalMs(uint16_t tempoBpm) {
 
 BeatClock beatClock(beatIntervalMs(INITIAL_TEMPO_BPM));
 M5BuzzerToneOutput buzzerOutput;
-int8_t scaledClickSamples[CLICK_SAMPLE_CAPACITY];
 int8_t keepAliveSilence[KEEP_ALIVE_SAMPLE_COUNT] = {};
 uint16_t tempoBpm = INITIAL_TEMPO_BPM;
 uint8_t clickVolume = INITIAL_CLICK_VOLUME;
 uint8_t currentBeat = 0;
 ControlMode controlMode = ControlMode::Tempo;
 bool inputArmed = true;
+ClickSoundId accentClick = ClickSoundId::Plain1600;
+ClickSoundId regularClick = ClickSoundId::MidTick;
 
 const char* controlModeName() {
-  return controlMode == ControlMode::Tempo ? "tempo" : "volume";
+  switch (controlMode) {
+    case ControlMode::Tempo:
+      return "tempo";
+    case ControlMode::Volume:
+      return "volume";
+    case ControlMode::Sound:
+      return "sound";
+  }
+  return "unknown";
 }
 
 void drawBeat(uint8_t beat, bool active) {
@@ -60,6 +69,15 @@ void drawBeat(uint8_t beat, bool active) {
 void drawControl() {
   M5.Display.fillRect(0, 32, M5.Display.width(), 40, TFT_BLACK);
   M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+  if (controlMode == ControlMode::Sound) {
+    M5.Display.setTextSize(1);
+    M5.Display.setCursor(32, 38);
+    M5.Display.printf("A ACCENT  %s", clickSoundName(accentClick));
+    M5.Display.setCursor(32, 56);
+    M5.Display.printf("B REGULAR %s", clickSoundName(regularClick));
+    return;
+  }
+
   M5.Display.setTextSize(3);
   M5.Display.setCursor(70, 38);
   if (controlMode == ControlMode::Tempo) {
@@ -79,8 +97,12 @@ void drawInputStatus() {
   M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, STATUS_ROW_Y + 3);
-  M5.Display.printf("%s   A +   B -",
-                    controlMode == ControlMode::Tempo ? "TEMPO" : "VOLUME");
+  if (controlMode == ControlMode::Sound) {
+    M5.Display.print("SOUND   A accent   B regular");
+  } else {
+    M5.Display.printf("%s   A +   B -",
+                      controlMode == ControlMode::Tempo ? "TEMPO" : "VOLUME");
+  }
 }
 
 void drawScreen() {
@@ -98,11 +120,35 @@ void drawScreen() {
 }
 
 void cycleControlMode() {
-  controlMode = controlMode == ControlMode::Tempo ? ControlMode::Volume
-                                                  : ControlMode::Tempo;
+  switch (controlMode) {
+    case ControlMode::Tempo:
+      controlMode = ControlMode::Volume;
+      break;
+    case ControlMode::Volume:
+      controlMode = ControlMode::Sound;
+      break;
+    case ControlMode::Sound:
+      controlMode = ControlMode::Tempo;
+      break;
+  }
   drawControl();
   drawInputStatus();
   Serial.printf("control: action=mode selected=%s\n", controlModeName());
+}
+
+ClickSoundId nextClickSound(ClickSoundId current) {
+  const size_t nextIndex =
+      (static_cast<size_t>(current) + 1) % clickSoundCount();
+  return static_cast<ClickSoundId>(nextIndex);
+}
+
+void selectNextSound(bool accent) {
+  ClickSoundId& selection = accent ? accentClick : regularClick;
+  selection = nextClickSound(selection);
+  drawControl();
+  Serial.printf("control: action=adjust mode=sound role=%s selected=%s\n",
+                accent ? "accent" : "regular",
+                clickSoundLogName(selection));
 }
 
 void adjustTempo(int8_t direction, uint32_t nowMs) {
@@ -131,34 +177,20 @@ void adjustVolume(int8_t direction) {
 
   const uint8_t previousVolume = clickVolume;
   clickVolume = bounded;
+  buzzerOutput.setVolume(clickVolume);
   drawControl();
   Serial.printf(
       "control: action=adjust mode=volume direction=%s previous=%u value=%u\n",
       direction > 0 ? "up" : "down", previousVolume, clickVolume);
 }
 
-PcmS8Sample renderClickAtVolume(const PcmS8Sample& source) {
-  const size_t sampleCount =
-      source.sampleCount < CLICK_SAMPLE_CAPACITY ? source.sampleCount
-                                                 : CLICK_SAMPLE_CAPACITY;
-  const int32_t gainSquared =
-      static_cast<int32_t>(clickVolume) * clickVolume;
-  constexpr int32_t MAX_GAIN_SQUARED = 255 * 255;
-
-  for (size_t index = 0; index < sampleCount; index++) {
-    scaledClickSamples[index] = static_cast<int8_t>(
-        static_cast<int32_t>(source.data[index]) * gainSquared /
-        MAX_GAIN_SQUARED);
-  }
-
-  return {scaledClickSamples, sampleCount, source.sampleRateHz};
-}
-
 void adjustCurrentControl(int8_t direction, uint32_t nowMs) {
   if (controlMode == ControlMode::Tempo) {
     adjustTempo(direction, nowMs);
-  } else {
+  } else if (controlMode == ControlMode::Volume) {
     adjustVolume(direction);
+  } else {
+    selectNextSound(direction > 0);
   }
 }
 
@@ -191,21 +223,19 @@ void handleButtons(uint32_t nowMs) {
 
 void triggerCurrentClick(uint32_t nowMs) {
   const bool downbeat = currentBeat == 0;
-  const PcmS8Sample& source = metronomeClickSample();
-  const PcmS8Sample sample = renderClickAtVolume(source);
-  const bool muted = clickVolume == 0;
-  const bool started = muted || buzzerOutput.playSample(sample);
+  const ClickSoundId sound = downbeat ? accentClick : regularClick;
+  const PcmS8Sample& sample = clickSoundSample(sound);
+  const bool started = buzzerOutput.playSample(sample);
   const uint32_t durationMs =
       sample.sampleCount * 1000UL / sample.sampleRateHz;
   Serial.printf(
       "click: beat=%u accent=%s sound=%s duration_ms=%lu sample_rate_hz=%lu "
-      "samples=%u volume=%u gain=pcm playback=%s ok=%s "
+      "samples=%u volume=%u gain=master playback=started ok=%s "
       "now_ms=%lu\n",
-      currentBeat + 1, downbeat ? "yes" : "no", metronomeClickName(),
+      currentBeat + 1, downbeat ? "yes" : "no", clickSoundLogName(sound),
       static_cast<unsigned long>(durationMs),
       static_cast<unsigned long>(sample.sampleRateHz),
       static_cast<unsigned>(sample.sampleCount), clickVolume,
-      muted ? "muted" : "started",
       started ? "yes" : "no", static_cast<unsigned long>(nowMs));
 }
 
@@ -236,9 +266,9 @@ void setup() {
   delay(200);
 
   M5.Display.setRotation(1);
-  buildMetronomeClickSample();
+  buildMetronomeClickSamples();
   buzzerOutput.begin();
-  buzzerOutput.setVolume(255);
+  buzzerOutput.setVolume(clickVolume);
   const bool keepAliveStarted = M5.Speaker.playRaw(
       keepAliveSilence, KEEP_ALIVE_SAMPLE_COUNT, 16000, false, UINT32_MAX,
       KEEP_ALIVE_CHANNEL, true);
