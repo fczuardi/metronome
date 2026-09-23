@@ -8,10 +8,10 @@ class BeatClock {
 
   void begin(uint32_t nowMs);
   uint32_t elapsedBeats(uint32_t nowMs);
+  void setIntervalMs(uint32_t nowMs, uint32_t intervalMs);
 
  private:
   uint32_t intervalMs_;
   uint32_t nextBeatAtMs_ = 0;
   bool started_ = false;
 };
-

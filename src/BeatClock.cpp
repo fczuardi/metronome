@@ -16,3 +16,21 @@ uint32_t BeatClock::elapsedBeats(uint32_t nowMs) {
   return beatCount;
 }
 
+void BeatClock::setIntervalMs(uint32_t nowMs, uint32_t intervalMs) {
+  if (intervalMs == 0 || intervalMs_ == 0) return;
+
+  if (!started_) {
+    intervalMs_ = intervalMs;
+    return;
+  }
+
+  const int32_t signedRemaining =
+      static_cast<int32_t>(nextBeatAtMs_ - nowMs);
+  const uint32_t remainingMs = signedRemaining > 0 ? signedRemaining : 0;
+  const uint32_t scaledRemainingMs = static_cast<uint32_t>(
+      (static_cast<uint64_t>(remainingMs) * intervalMs + intervalMs_ / 2) /
+      intervalMs_);
+
+  intervalMs_ = intervalMs;
+  nextBeatAtMs_ = nowMs + scaledRemainingMs;
+}
