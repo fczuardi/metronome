@@ -32,6 +32,23 @@ just monitor
 `just devices` when the serial port is uncertain, and `just clean` to discard
 the local PlatformIO build output.
 
+## Application structure
+
+The firmware keeps application concerns in local modules while their contracts
+are still specific to this metronome:
+
+- `BeatClock`: monotonic deadlines and phase-preserving interval changes;
+- `ControlSurface`: A/B release gestures, chord priority, and input rearming;
+- `MetronomeState`: bounded musical/control state and mode transitions;
+- `MetronomeDisplay`: all screen layout and incremental beat drawing;
+- `MetronomeAudio`: speaker ownership, master gain, silent keep-alive, and PCM
+  dispatch;
+- `MetronomeClickSamples`: the fixed generated sound catalog;
+- `main.cpp`: setup, event ordering, orchestration, and diagnostic logs.
+
+These are internal boundaries, not reusable packages. Promotion waits for a
+second real consumer to reveal a stable contract.
+
 ## Timing questions
 
 The metronome is a small second consumer with which to investigate boundaries
