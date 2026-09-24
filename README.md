@@ -7,7 +7,7 @@ hardware. The first target is the M5StickC Plus2 with its two user buttons,
 This repository begins as an application experiment, not a reusable clock or
 transport package. Its timing implementation will be compared with the local
 `StepClock` in
-[`calculator-face-input`](https://github.com/fczuardi/calculator-face-input)
+[`calculator-face-input`](https://github.com/embedded-music/calculator-face-input)
 before either design is promoted into shared code.
 
 ## Current experiment
