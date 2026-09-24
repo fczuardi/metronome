@@ -116,12 +116,16 @@ void triggerCurrentClick(uint32_t nowMs) {
 }
 
 void advanceVisibleBeat(uint64_t nowUs, uint32_t nowMs) {
-  const uint32_t elapsed = beatClock.poll(nowUs).elapsed_events;
+  const uint32_t elapsed = beatClock.poll(nowUs).elapsed_intervals;
   if (elapsed == 0) return;
 
   const uint8_t previousBeat = state.currentBeat();
   state.advanceBeat(elapsed);
-  triggerCurrentClick(nowMs);
+  // A late poll cannot replay clicks whose deadlines are already past. Wait
+  // for the next absolute deadline before producing audio again.
+  if (elapsed == 1) triggerCurrentClick(nowMs);
+  else Serial.printf("transport: skipped_intervals count=%lu\n",
+                     static_cast<unsigned long>(elapsed));
   display.drawBeat(previousBeat, false);
   display.drawBeat(state.currentBeat(), true);
 
