@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_timer.h>
 #include <M5Unified.h>
 
 #include "DeadlineClock.h"
@@ -150,7 +151,8 @@ void setup() {
   const bool keepAliveStarted = audio.begin(state.clickVolume());
   display.drawScreen(state);
   const bool clockStarted = beatClock.begin(
-      static_cast<uint64_t>(micros()), state.beatIntervalMs() * 1000ULL);
+      static_cast<uint64_t>(esp_timer_get_time()),
+      state.beatIntervalMs() * 1000ULL);
   if (!clockStarted) {
     Serial.println("clock: begin_failed");
   }
@@ -167,7 +169,7 @@ void setup() {
 
 void loop() {
   M5.update();
-  const uint64_t nowUs = static_cast<uint64_t>(micros());
+  const uint64_t nowUs = static_cast<uint64_t>(esp_timer_get_time());
   const uint32_t nowMs = millis();
   advanceVisibleBeat(nowUs, nowMs);
   applyControl(controls.poll(), nowUs, nowMs);
